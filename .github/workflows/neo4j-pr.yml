@@ -1,0 +1,66 @@
+# Copyright 2021 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Checks that are intended to run on PRs containing Java code.
+
+name: Neo4j PR
+
+on:
+  pull_request:
+    branches:
+      - 'main'
+    paths:
+      - 'v2/googlecloud-to-neo4j/**'
+  workflow_dispatch:
+
+env:
+  MAVEN_OPTS: -Dorg.slf4j.simpleLogger.log.org.apache.maven.plugins.shade=error
+
+permissions: read-all
+
+jobs:
+  neo4j_integration_test_templates:
+    name: Neo4j Template Custom Integration Tests
+    timeout-minutes: 60
+    # Run on any runner that matches all the specified runs-on values.
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@ee0669bd1cc54295c223e0bb666b733df41de1c5 # v2.7.0
+      - name: Setup Environment
+        id: setup-env
+        uses: ./.github/actions/setup-env
+      - name: Login
+        run: gcloud auth application-default login --no-browser
+        env:
+          CLOUDSDK_AUTH_ACCESS_TOKEN: ${{ secrets.ACCOUNTTOKEN }}
+      - name: Run Neo4j Custom Integration Tests
+        env:
+          DT_IT_ACCESS_TOKEN: ${{ secrets.ACCOUNTTOKEN }}
+        run: |
+          mvn --also-make --projects v2/googlecloud-to-neo4j verify \
+          -Dexcluded.neo4j.tests="" \
+          -Dproject=team-connectors-dev \
+          -DstageBucket=emre-dataflow-example \
+          -Pneo4jCustomIntegrationTests
+      - name: Upload Tests Report
+        uses: actions/upload-artifact@0b7f8abb1508181956e8e162db84b466c27e18ce # v3.1.2
+        if: always() # always run even if the previous step fails
+        with:
+          name: surefire-test-results
+          path: '**/surefire-reports/TEST-*.xml'
+          retention-days: 1
+      - name: Cleanup Java Environment
+        uses: ./.github/actions/cleanup-java-env
+        if: always()
